@@ -68,16 +68,30 @@ jobs:
         run: |
           mkdir -p app
           export SERIOUS_PYTHON_SITE_PACKAGES=$(pwd)/build/site-packages
-          export SERIOUS_PYTHON_APP=$(pwd)/build/python-app
           echo "SERIOUS_PYTHON_SITE_PACKAGES=$(pwd)/build/site-packages" >> $GITHUB_ENV
-          echo "SERIOUS_PYTHON_APP=$(pwd)/app" >> $GITHUB_ENV
           REQS=$(grep -vE '^\s*#|^\s*$' python_app/requirements.txt | tr '\n' ',' | sed 's/,$//')
           if [ -n "$REQS" ]; then
             echo "Bundling Python packages: $REQS"
-            dart run serious_python:main package python_app -p Android -r "$REQS"
+            dart run serious_python:main package python_app -p Android -r "$REQS" || true
           else
-            echo "No Python packages listed — bundling code only"
-            dart run serious_python:main package python_app -p Android
+            echo "No Python packages listed - bundling code only"
+            dart run serious_python:main package python_app -p Android || true
+          fi
+
+          echo "--- Searching for produced app.zip ---"
+          find . -name "app.zip" -not -path "./.dart_tool/*" 2>/dev/null || true
+
+          ZIP=$(find . -name "app.zip" -not -path "./app/app.zip" -not -path "./.dart_tool/*" 2>/dev/null | head -n1)
+          if [ -n "$ZIP" ] && [ "$ZIP" != "./app/app.zip" ]; then
+            echo "Moving $ZIP -> app/app.zip"
+            mv "$ZIP" app/app.zip
+          fi
+
+          echo "--- Contents of app/ ---"
+          ls -la app/
+          if [ ! -f app/app.zip ]; then
+            echo "FATAL: app/app.zip was not produced by serious_python"
+            exit 1
           fi
 
       - name: Verify Python zip is in place
