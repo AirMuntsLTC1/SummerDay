@@ -1,0 +1,19 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+*.iml
+
+# Generated Python zip (built in CI)
+app/app.zip
+
+# Android
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/release/
+
+# OS
+.DS_Store
