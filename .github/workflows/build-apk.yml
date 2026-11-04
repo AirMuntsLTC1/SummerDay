@@ -1,4 +1,4 @@
-name: Build Optimized Offline APK
+name: Build SummerDay APK
 
 on:
   push:
@@ -115,5 +115,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-arm64-release
+          name: SummerDay-arm64-release
           path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
