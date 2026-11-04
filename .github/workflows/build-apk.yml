@@ -69,7 +69,14 @@ jobs:
           mkdir -p app
           export SERIOUS_PYTHON_SITE_PACKAGES=$(pwd)/build/site-packages
           export SERIOUS_PYTHON_APP=$(pwd)/build/python-app
-          dart run serious_python:main package python_app -p Android -r python_app/requirements.txt
+          REQS=$(grep -vE '^\s*#|^\s*$' python_app/requirements.txt | tr '\n' ',' | sed 's/,$//')
+          if [ -n "$REQS" ]; then
+            echo "Bundling Python packages: $REQS"
+            dart run serious_python:main package python_app -p Android -r "$REQS"
+          else
+            echo "No Python packages listed — bundling code only"
+            dart run serious_python:main package python_app -p Android
+          fi
 
       - name: Build arm64-only APK with shrinking
         run: |
