@@ -70,7 +70,7 @@ jobs:
           export SERIOUS_PYTHON_SITE_PACKAGES=$(pwd)/build/site-packages
           export SERIOUS_PYTHON_APP=$(pwd)/build/python-app
           echo "SERIOUS_PYTHON_SITE_PACKAGES=$(pwd)/build/site-packages" >> $GITHUB_ENV
-          echo "SERIOUS_PYTHON_APP=$(pwd)/build/python-app" >> $GITHUB_ENV
+          echo "SERIOUS_PYTHON_APP=$(pwd)/app" >> $GITHUB_ENV
           REQS=$(grep -vE '^\s*#|^\s*$' python_app/requirements.txt | tr '\n' ',' | sed 's/,$//')
           if [ -n "$REQS" ]; then
             echo "Bundling Python packages: $REQS"
@@ -80,13 +80,23 @@ jobs:
             dart run serious_python:main package python_app -p Android
           fi
 
+      - name: Verify Python zip is in place
+        run: |
+          ls -la app/ || true
+          if [ ! -f app/app.zip ]; then
+            echo "❌ app/app.zip missing — check the Package Python App step output."
+            exit 1
+          fi
+          echo "✅ app/app.zip present ($(du -h app/app.zip | cut -f1))"
+
       - name: Build arm64-only APK with shrinking
         run: |
           flutter build apk --release \
             --target-platform android-arm64 \
             --split-per-abi \
             --obfuscate \
-            --split-debug-info=build/debug-info
+            --split-debug-info=build/debug-info \
+            --strip
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
