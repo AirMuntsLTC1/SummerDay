@@ -16,11 +16,11 @@ class StatSelectionScreen extends StatelessWidget {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildCard(context, 'Start with Zero', 'Hardcore experience.\nStats: 1\nMoney: $0', 'zero'),
+              _buildCard(context, 'Start with Zero', 'Hardcore experience.\nStats: 1\nMoney: \$0', 'zero'),
               const SizedBox(height: 16),
-              _buildCard(context, 'Start with Mod', 'Balanced experience.\nStats: 5\nMoney: $100', 'mod'),
+              _buildCard(context, 'Start with Mod', 'Balanced experience.\nStats: 5\nMoney: \$100', 'mod'),
               const SizedBox(height: 16),
-              _buildCard(context, 'Start with Full Stats', 'Story focus.\nStats: 10\nMoney: $500', 'full'),
+              _buildCard(context, 'Start with Full Stats', 'Story focus.\nStats: 10\nMoney: \$500', 'full'),
             ],
           ),
         ),

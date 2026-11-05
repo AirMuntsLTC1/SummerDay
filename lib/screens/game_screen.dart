@@ -126,7 +126,7 @@ class _GameScreenState extends State<GameScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Day ${s['day']} - ${s['time']}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                      Text('$${s['money']}', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                      Text('\$${s['money']}', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const SizedBox(height: 8),
