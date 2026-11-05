@@ -11,9 +11,10 @@ class IntroStoryScreen extends StatefulWidget {
   State<IntroStoryScreen> createState() => _IntroStoryScreenState();
 }
 
-class _IntroStoryScreenState extends State<IntroStoryScreen> {
+class _IntroStoryScreenState extends State<IntroStoryScreen> with SingleTickerProviderStateMixin {
   final _client = GameClient();
-  
+  late AnimationController _animController;
+
   String _fullText = "";
   String _displayText = "";
   String _bg = "bus";
@@ -24,11 +25,17 @@ class _IntroStoryScreenState extends State<IntroStoryScreen> {
   @override
   void initState() {
     super.initState();
+    // Controller for the procedural background animations
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
     _fetchNext();
   }
 
   @override
   void dispose() {
+    _animController.dispose();
     _timer?.cancel();
     super.dispose();
   }
@@ -42,7 +49,6 @@ class _IntroStoryScreenState extends State<IntroStoryScreen> {
       if (!mounted) return;
       
       if (res['phase'] == 'room') {
-        // Story is over, fade into the room!
         Navigator.pushReplacement(context, FadeRoute(page: const GameScreen()));
         return;
       }
@@ -63,7 +69,7 @@ class _IntroStoryScreenState extends State<IntroStoryScreen> {
   }
 
   void _startTyping() {
-    _timer = Timer.periodic(const Duration(milliseconds: 40), (timer) {
+    _timer = Timer.periodic(const Duration(milliseconds: 35), (timer) {
       if (_displayText.length < _fullText.length) {
         setState(() {
           _displayText = _fullText.substring(0, _displayText.length + 1);
@@ -77,41 +83,14 @@ class _IntroStoryScreenState extends State<IntroStoryScreen> {
 
   void _handleTap() {
     if (_isTyping) {
-      // Skip typing animation
       _timer?.cancel();
       setState(() {
         _displayText = _fullText;
         _isTyping = false;
       });
     } else {
-      // Next scene
       _fetchNext();
     }
-  }
-
-  Widget _buildBackground() {
-    // Fallback gradients based on the scene
-    List<Color> colors;
-    if (_bg == "bus") {
-      colors = [Colors.blue.shade900, Colors.blueGrey.shade900];
-    } else if (_bg == "house") {
-      colors = [Colors.brown.shade800, Colors.brown.shade900];
-    } else {
-      colors = [Colors.indigo.shade900, Colors.black];
-    }
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 1500),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: colors,
-        ),
-      ),
-      // IF you have real images later, uncomment this:
-      // child: Image.asset('assets/backgrounds/$_bg.png', fit: BoxFit.cover, errorBuilder: (c,e,s) => Container()),
-    );
   }
 
   @override
@@ -123,59 +102,143 @@ class _IntroStoryScreenState extends State<IntroStoryScreen> {
         behavior: HitTestBehavior.opaque,
         child: Stack(
           children: [
-            // Animated Background
+            // 1. PROCEDURAL ANIMATED BACKGROUND
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 1500),
               child: SizedBox(
                 key: ValueKey(_bg),
-                child: _buildBackground(),
+                child: AnimatedBuilder(
+                  animation: _animController,
+                  builder: (context, child) {
+                    return CustomPaint(
+                      painter: ScenePainter(_bg, _animController.value),
+                      size: MediaQuery.of(context).size,
+                    );
+                  },
+                ),
               ),
             ),
 
-            // Content
+            // 2. DIALOGUE BOX (Summertime Saga Style)
             if (!_loading)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                  child: Text(
-                    _displayText,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 24,
-                      height: 1.5,
-                      fontWeight: FontWeight.w300,
-                      shadows: [
-                        Shadow(blurRadius: 10, color: Colors.black, offset: Offset(0, 2))
-                      ]
-                    ),
+              Positioned(
+                bottom: 30, left: 20, right: 20,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.orange.shade400, width: 2),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 20, spreadRadius: 5)
+                    ]
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _displayText,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          height: 1.5,
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Text(
+                          _isTyping ? "Tap to skip..." : "▼ Tap to continue",
+                          style: TextStyle(color: Colors.orange.shade300, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      )
+                    ],
                   ),
                 ),
-              )
-            else
-              const Center(child: CircularProgressIndicator(color: Colors.orange)),
-
-            // Cinematic Letterbox Bars (Top and Bottom)
-            Positioned(
-              top: 0, left: 0, right: 0,
-              child: Container(height: 60, color: Colors.black),
-            ),
-            Positioned(
-              bottom: 0, left: 0, right: 0,
-              child: Container(height: 60, color: Colors.black),
-            ),
-
-            // Hint text at the bottom
-            Positioned(
-              bottom: 20, right: 20,
-              child: Text(
-                _isTyping ? "Tap to skip..." : "Tap to continue...",
-                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12),
               ),
-            )
+
+            if (_loading)
+              const Center(child: CircularProgressIndicator(color: Colors.orange)),
           ],
         ),
       ),
     );
   }
+}
+
+// 3. CUSTOM PAINTER FOR PROCEDURAL BACKGROUNDS
+class ScenePainter extends CustomPainter {
+  final String scene;
+  final double animValue;
+
+  ScenePainter(this.scene, this.animValue);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    
+    if (scene == "bus") {
+      // Night sky
+      paint.shader = LinearGradient(
+        colors: [const Color(0xFF0F2027), const Color(0xFF203A43), const Color(0xFF2C5364)],
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+      // Moving Road Lines
+      paint.color = Colors.white.withOpacity(0.3);
+      final roadY = size.height * 0.75;
+      final offset = animValue * 200;
+      for (double i = -200; i < size.width + 200; i += 100) {
+        canvas.drawRect(Rect.fromLTWH(i + offset, roadY, 50, 8), paint);
+        canvas.drawRect(Rect.fromLTWH(i + offset, roadY + 40, 50, 8), paint);
+      }
+
+      // Passing Streetlights
+      paint.color = Colors.orangeAccent.withOpacity(0.6);
+      final lightOffset = (animValue * 400) % (size.width + 200) - 200;
+      canvas.drawCircle(Offset(lightOffset, size.height * 0.3), 15, paint);
+      canvas.drawCircle(Offset(lightOffset - 150, size.height * 0.35), 10, paint);
+      
+    } else if (scene == "house") {
+      // Sunset Sky
+      paint.shader = LinearGradient(
+        colors: [const Color(0xFF1A0B2E), const Color(0xFF4A1942), const Color(0xFF893168)],
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+      // House Silhouette
+      paint.color = Colors.black.withOpacity(0.8);
+      final housePath = Path();
+      housePath.moveTo(size.width * 0.2, size.height);
+      housePath.lineTo(size.width * 0.2, size.height * 0.6);
+      housePath.lineTo(size.width * 0.5, size.height * 0.4);
+      housePath.lineTo(size.width * 0.8, size.height * 0.6);
+      housePath.lineTo(size.width * 0.8, size.height);
+      housePath.close();
+      canvas.drawPath(housePath, paint);
+
+      // Glowing Porch Light
+      paint.color = Colors.amber.withOpacity(0.5 + (animValue * 0.5));
+      canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.75), 20, paint);
+
+    } else {
+      // Bedroom Morning Sun
+      paint.shader = LinearGradient(
+        colors: [const Color(0xFFFFD194), const Color(0xFFF37335)],
+        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
+      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+      // Rising Sun
+      paint.color = Colors.white.withOpacity(0.8);
+      final sunY = size.height * 0.8 - (animValue * size.height * 0.2);
+      canvas.drawCircle(Offset(size.width * 0.5, sunY), 100, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }

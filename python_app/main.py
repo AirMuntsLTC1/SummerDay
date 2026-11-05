@@ -37,14 +37,17 @@ class GameState:
             self.money = 500
             
         self.phase = "intro"
-        # The Cinematic Story Queue
+        
+        # THE STORY: The Boy's Past
         self.dialogue_queue = [
-            {"bg": "bus", "text": "It's been three years since I left this town..."},
-            {"bg": "bus", "text": "Now I'm back. 18 years old, with nothing but a suitcase and a vague memory of this place."},
-            {"bg": "house", "text": "My mother left me the old house. It's dusty, but it's mine now."},
-            {"bg": "bedroom", "text": "I walk inside and drop my bags. The room is exactly how I remember it."},
-            {"bg": "bedroom", "text": "Exhausted from the trip, I collapse onto the bed..."},
-            {"bg": "bedroom", "text": "Tomorrow is a new day. Time to see what this town has to offer."}
+            {"bg": "bus", "text": "Three years. It's been exactly three years since the accident..."},
+            {"bg": "bus", "text": "After Mom passed away, I was sent to live with my strict uncle in the city."},
+            {"bg": "bus", "text": "But now that I'm 18, I'm finally coming back. I couldn't stay away any longer."},
+            {"bg": "house", "text": "She left me the house in her will. It's a little run down, but it's mine now."},
+            {"bg": "house", "text": "I unlock the door and step inside. It smells exactly like I remember."},
+            {"bg": "bedroom", "text": "I drop my bags in my old bedroom. The sun is setting."},
+            {"bg": "bedroom", "text": "Tomorrow is a new day. Time to see if this town still remembers me..."},
+            {"bg": "bedroom", "text": "And if she still remembers me."}
         ]
         return self.get_next_dialogue()
 
@@ -59,8 +62,9 @@ class GameState:
                 "is_last": len(self.dialogue_queue) == 0
             }
         else:
+            # Transition to the interactive room phase
             self.phase = "room"
-            self.message = "You wake up in your bedroom. The sun is shining."
+            self.message = "You wake up to the sound of birds. Day 1 begins."
             return self.to_dict()
 
     def interact(self, target):
