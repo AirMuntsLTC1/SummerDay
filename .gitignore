@@ -6,8 +6,8 @@
 build/
 *.iml
 
-# Generated Python zip (built in CI)
-app/app.zip
+# Python staging (built in CI)
+build/python-app/
 
 # Android
 android/.gradle/

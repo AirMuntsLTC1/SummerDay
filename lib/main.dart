@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,7 +7,9 @@ import 'package:serious_python/serious_python.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await SeriousPython.run("app/app.zip");
+  // Fire-and-forget: Python runs in its own subprocess and blocks forever
+  // serving HTTP on 127.0.0.1:8000. We must NOT await, or the UI hangs.
+  unawaited(SeriousPython.run());
   runApp(const SummerDayApp());
 }
 
@@ -44,7 +47,8 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<Map<String, dynamic>> _call(String path, {String? body}) async {
-    final client = HttpClient();
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 2);
     try {
       final uri = Uri.parse('http://127.0.0.1:8000$path');
       final req = body == null
@@ -58,30 +62,42 @@ class _GameScreenState extends State<GameScreen> {
       final text = await res.transform(utf8.decoder).join();
       return jsonDecode(text) as Map<String, dynamic>;
     } finally {
-      client.close();
+      client.close(force: true);
     }
   }
 
   Future<void> _refresh() async {
-    try {
-      final s = await _call('/state');
-      setState(() {
-        _state = s;
-        _error = null;
-      });
-    } catch (e) {
-      setState(() => _error = e.toString());
+    // Give the Python subprocess time to bind its socket
+    for (var i = 0; i < 20; i++) {
+      try {
+        final s = await _call('/state');
+        if (!mounted) return;
+        setState(() {
+          _state = s;
+          _error = null;
+        });
+        return;
+      } catch (e) {
+        if (i == 19) {
+          if (!mounted) return;
+          setState(() => _error = 'Python server did not start: $e');
+        } else {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
     }
   }
 
   Future<void> _choose(String action) async {
     try {
       final s = await _call('/choice', body: jsonEncode({'action': action}));
+      if (!mounted) return;
       setState(() {
         _state = s;
         _error = null;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _error = e.toString());
     }
   }
@@ -101,9 +117,16 @@ class _GameScreenState extends State<GameScreen> {
             children: [
               if (_error != null)
                 Text('Error: $_error',
+                    textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.red))
               else if (_state == null)
-                const CircularProgressIndicator()
+                const Column(
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Starting SummerDay…'),
+                  ],
+                )
               else ...[
                 Text('Day ${_state!["day"]}',
                     style: Theme.of(context).textTheme.headlineMedium),
