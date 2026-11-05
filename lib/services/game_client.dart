@@ -6,24 +6,17 @@ class GameClient {
   static const _port = 8000;
 
   Future<Map<String, dynamic>> send(String command) async {
-    final socket = await Socket.connect(
-      _host,
-      _port,
-      timeout: const Duration(seconds: 3),
-    );
+    return sendRaw('{"action": "$command"}');
+  }
+
+  Future<Map<String, dynamic>> sendRaw(String jsonString) async {
+    final socket = await Socket.connect(_host, _port, timeout: const Duration(seconds: 3));
     try {
-      // Send command bytes
-      socket.add(utf8.encode(command));
+      socket.add(utf8.encode(jsonString));
       await socket.flush();
-
-      // Read all response bytes until the server closes the socket
       final bytes = <int>[];
-      await for (final chunk in socket) {
-        bytes.addAll(chunk);
-      }
-
-      final raw = utf8.decode(bytes);
-      return jsonDecode(raw) as Map<String, dynamic>;
+      await for (final chunk in socket) { bytes.addAll(chunk); }
+      return jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
     } finally {
       socket.destroy();
     }
@@ -31,12 +24,10 @@ class GameClient {
 
   Future<Map<String, dynamic>> waitForServer({int attempts = 20}) async {
     for (var i = 0; i < attempts; i++) {
-      try {
-        return await send('state');
-      } catch (_) {
+      try { return await send('state'); } catch (_) {
         await Future.delayed(const Duration(milliseconds: 500));
       }
     }
-    throw Exception('Python server did not start. Check APK log.');
+    throw Exception('Python server did not start.');
   }
 }

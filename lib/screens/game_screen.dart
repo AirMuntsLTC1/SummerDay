@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/game_client.dart';
-import 'map_screen.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -12,93 +11,96 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   final _client = GameClient();
   Map<String, dynamic>? _state;
-  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
-    _bootstrap();
+    _refresh();
   }
 
-  Future<void> _bootstrap() async {
+  Future<void> _refresh() async {
     try {
-      final s = await _client.waitForServer();
-      if (!mounted) return;
-      setState(() { _state = s; _loading = false; });
-    } catch (e) {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _send(String command) async {
-    try {
-      final s = await _client.send(command);
+      final s = await _client.send('{"action": "state"}');
       if (mounted) setState(() => _state = s);
     } catch (_) {}
   }
 
-  // Helper to safely load images with a visual fallback
-  Widget _assetImage(String path, {BoxFit fit = BoxFit.cover, Widget? fallback}) {
-    return Image.asset(
-      'assets/$path.png',
-      fit: fit,
-      errorBuilder: (context, error, stackTrace) {
-        return fallback ?? Container(color: Colors.grey.shade800);
-      },
-    );
+  Future<void> _interact(String target) async {
+    try {
+      final s = await _client.send('{"action": "interact", "target": "$target"}');
+      if (mounted) setState(() => _state = s);
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_state == null) return const Scaffold(body: Center(child: Text('Error connecting to game.')));
+    if (_state == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     final s = _state!;
-    final sprites = (s['sprites'] as List).cast<Map<String, dynamic>>();
+    final hotspots = (s['hotspots'] as List).cast<Map<String, dynamic>>();
+    final characters = (s['characters'] as List).cast<Map<String, dynamic>>();
+    final screenSize = MediaQuery.of(context).size;
 
     return Scaffold(
       body: Stack(
         children: [
-          // 1. BACKGROUND
+          // Background (Fallback to gradient if no image)
           Positioned.fill(
-            child: _assetImage(
-              'backgrounds/${s['background']}',
-              fallback: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade200, Colors.blue.shade600],
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                  ),
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF2c3e50), Color(0xFF000000)],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
                 ),
-                child: Center(child: Text(s['location_name'], style: const TextStyle(fontSize: 40, color: Colors.white))),
+              ),
+              child: Center(
+                child: Text(s['location'].toString().toUpperCase(), style: const TextStyle(color: Colors.white24, fontSize: 48, fontWeight: FontWeight.bold)),
               ),
             ),
           ),
 
-          // 2. CHARACTER SPRITES
-          ...sprites.asMap().entries.map((entry) {
-            final i = entry.key;
-            final sprite = entry.value;
-            // Simple layout: spread characters evenly
-            final leftOffset = (MediaQuery.of(context).size.width / (sprites.length + 1)) * (i + 1) - 60;
+          // Hotspots (Doors, Beds, etc.)
+          ...hotspots.map((h) {
             return Positioned(
-              bottom: 160, // just above dialogue box
-              left: leftOffset,
+              left: screenSize.width * h['x'],
+              top: screenSize.height * h['y'],
+              width: screenSize.width * h['w'],
+              height: screenSize.height * h['h'],
               child: GestureDetector(
-                onTap: () => _send('talk:${sprite['id']}'),
-                child: SizedBox(
-                  width: 120,
-                  height: 240,
-                  child: _assetImage(
-                    'characters/${sprite['sprite']}',
-                    fit: BoxFit.contain,
-                    fallback: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                onTap: () => _interact(h['id']),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.orange.withOpacity(0.3), width: 2),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.orange.withOpacity(0.1),
+                  ),
+                  child: Center(child: Icon(Icons.touch_app, color: Colors.orange.withOpacity(0.5))),
+                ),
+              ),
+            );
+          }),
+
+          // Characters
+          ...characters.map((c) {
+            return Positioned(
+              left: screenSize.width * c['x'],
+              top: screenSize.height * c['y'],
+              width: screenSize.width * c['w'],
+              height: screenSize.height * c['h'],
+              child: GestureDetector(
+                onTap: () => _interact(c['id']),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.blue.withOpacity(0.5), width: 2),
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.blue.withOpacity(0.1),
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        CircleAvatar(radius: 40, backgroundColor: Colors.orange, child: Text(sprite['name'][0], style: const TextStyle(fontSize: 30, color: Colors.white))),
-                        const SizedBox(height: 4),
-                        Text(sprite['name'], style: const TextStyle(fontWeight: FontWeight.bold, backgroundColor: Colors.white70)),
+                        const Icon(Icons.person, size: 64, color: Colors.blue),
+                        Text(c['name'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       ],
                     ),
                   ),
@@ -107,87 +109,42 @@ class _GameScreenState extends State<GameScreen> {
             );
           }),
 
-          // 3. HUD (Top)
-          Positioned(
-            top: 40, left: 16, right: 16,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _hudChip(Icons.calendar_today, 'Day ${s['day']}'),
-                _hudChip(Icons.wb_sunny, s['time'].toString().toUpperCase()),
-                _hudChip(Icons.attach_money, '${s['money']}'),
-                _hudChip(Icons.bolt, '${s['energy']}'),
-              ],
-            ),
-          ),
-
-          // 4. MAP BUTTON (Top Right, below HUD)
-          Positioned(
-            top: 90, right: 16,
-            child: FloatingActionButton(
-              mini: true,
-              backgroundColor: Colors.white,
-              onPressed: () async {
-                final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(exits: (s['exits'] as List).cast<String>())));
-                if (result != null) _send('move:$result');
-              },
-              child: const Icon(Icons.map, color: Colors.orange),
-            ),
-          ),
-
-          // 5. DIALOGUE BOX & ACTIONS (Bottom)
+          // Dialogue Box / UI
           Positioned(
             bottom: 0, left: 0, right: 0,
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                border: Border(top: BorderSide(color: Colors.orange.shade400, width: 3)),
+                color: Colors.black.withOpacity(0.9),
+                border: const Border(top: BorderSide(color: Colors.orange, width: 3)),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    s['message'],
-                    style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.4),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Day ${s['day']} - ${s['time']}', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                      Text('$${s['money']}', style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  // Actions
-                  if ((s['actions'] as List).isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: (s['actions'] as List).map((a) {
-                        return ActionChip(
-                          backgroundColor: Colors.orange.shade800,
-                          label: Text(a.toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12)),
-                          onPressed: () => _send('action:$a'),
-                        );
-                      }).toList(),
+                  const SizedBox(height: 8),
+                  Text(s['message'], style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  const SizedBox(height: 12),
+                  if ((s['quests'] as List).isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(color: Colors.orange.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: (s['quests'] as List).map((q) => Text('• $q', style: const TextStyle(color: Colors.orange, fontWeight: FontWeight.bold))).toList(),
+                      ),
                     ),
                 ],
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _hudChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black54,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.orange.shade300, size: 16),
-          const SizedBox(width: 4),
-          Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
     );
