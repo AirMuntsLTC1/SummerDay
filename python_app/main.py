@@ -2,24 +2,24 @@ import json
 import socket
 
 LOCATIONS = {
-    "home":   {"name": "Home",   "description": "Your cozy room.",
+    "home":   {"name": "Home",   "bg": "home_bg", "desc": "Your cozy room.",
                "actions": ["study", "sleep"], "exits": ["school", "mall", "park"],
                "characters": []},
-    "school": {"name": "School", "description": "The local high school.",
+    "school": {"name": "School", "bg": "school_bg", "desc": "The local high school.",
                "actions": ["study"], "exits": ["home", "mall"],
                "characters": ["mia"]},
-    "mall":   {"name": "Mall",   "description": "Busy shopping center.",
+    "mall":   {"name": "Mall",   "bg": "mall_bg", "desc": "Busy shopping center.",
                "actions": ["work", "shop"], "exits": ["home", "school", "park"],
                "characters": ["luna"]},
-    "park":   {"name": "Park",   "description": "Quiet green space.",
+    "park":   {"name": "Park",   "bg": "park_bg", "desc": "Quiet green space.",
                "actions": ["relax"], "exits": ["home", "mall"],
                "characters": ["sam"]},
 }
 
 CHARACTERS = {
-    "mia":  {"name": "Mia",  "role": "Classmate"},
-    "luna": {"name": "Luna", "role": "Shopkeeper"},
-    "sam":  {"name": "Sam",  "role": "Childhood friend"},
+    "mia":  {"name": "Mia",  "sprite": "mia_sprite"},
+    "luna": {"name": "Luna", "sprite": "luna_sprite"},
+    "sam":  {"name": "Sam",  "sprite": "sam_sprite"},
 }
 
 TIMES = ["morning", "afternoon", "evening", "night"]
@@ -32,7 +32,7 @@ class GameState:
         self.energy = 100
         self.location = "home"
         self.affection = {c: 0 for c in CHARACTERS}
-        self.message = "You wake up in your room. It's going to be a long day."
+        self.message = "You wake up in your room. Click the door to leave."
 
     @property
     def time(self):
@@ -52,21 +52,27 @@ class GameState:
             if a == "study" and self.energy < 10: continue
             if a == "work" and self.energy < 20: continue
             available_actions.append(a)
+            
+        # Build sprites list
+        active_sprites = []
+        for c in loc["characters"]:
+            active_sprites.append({
+                "id": c,
+                "name": CHARACTERS[c]["name"],
+                "sprite": CHARACTERS[c]["sprite"],
+                "affection": self.affection[c]
+            })
+
         return {
             "day": self.day, "time": self.time,
             "money": self.money, "energy": self.energy,
             "location": self.location,
             "location_name": loc["name"],
-            "location_description": loc["description"],
-            "affection": self.affection,
-            "characters_here": [
-                {"id": c, "name": CHARACTERS[c]["name"],
-                 "affection": self.affection[c]}
-                for c in loc["characters"]
-            ],
+            "background": loc["bg"],
             "message": self.message,
             "actions": available_actions,
-            "moves": loc["exits"],
+            "exits": loc["exits"],
+            "sprites": active_sprites
         }
 
 state = GameState()
@@ -84,24 +90,20 @@ def handle(cmd):
     if cmd.startswith("action:"):
         action = cmd.split(":", 1)[1]
         loc = LOCATIONS[state.location]
-        if action not in loc["actions"]:
-            state.message = "You can't do that here."
-        elif action == "study":
-            if state.energy < 10:
-                state.message = "You're too tired to study."
-            else:
+        if action == "study":
+            if state.energy >= 10:
                 state.energy -= 10
                 state.affection["mia"] = min(100, state.affection["mia"] + 1)
                 state.message = "You studied hard. Mia noticed (+1 affection)."
                 state.next_time()
+            else: state.message = "Too tired to study."
         elif action == "work":
-            if state.energy < 20:
-                state.message = "You're too tired to work."
-            else:
+            if state.energy >= 20:
                 state.energy -= 20
                 state.money += 30
                 state.message = "You worked a shift (+$30)."
                 state.next_time()
+            else: state.message = "Too tired to work."
         elif action == "sleep":
             state.time_idx = 0
             state.day += 1
@@ -110,14 +112,13 @@ def handle(cmd):
             state.message = "A new day dawns. Day %d." % state.day
         elif action == "relax":
             state.energy = min(100, state.energy + 10)
-            state.message = "You relaxed in the park (+10 energy)."
+            state.message = "You relaxed (+10 energy)."
             state.next_time()
         elif action == "shop":
-            if state.money < 20:
-                state.message = "You can't afford anything."
-            else:
+            if state.money >= 20:
                 state.money -= 20
-                state.message = "You bought a small gift (-$20)."
+                state.message = "You bought a gift (-$20)."
+            else: state.message = "Not enough money."
         return state.to_dict()
 
     if cmd.startswith("move:"):
@@ -140,23 +141,19 @@ def handle(cmd):
             state.message = "They're not here."
         return state.to_dict()
 
-    return {"error": "unknown: " + cmd, **state.to_dict()}
-
+    return state.to_dict()
 
 def serve():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("127.0.0.1", 8000))
     s.listen(8)
-    print("SummerDay backend ready on 127.0.0.1:8000", flush=True)
+    print("SummerDay backend ready", flush=True)
     while True:
         try:
             conn, _ = s.accept()
             raw = conn.recv(4096).decode("utf-8", "replace").strip()
-            try:
-                resp = json.dumps(handle(raw))
-            except Exception as e:
-                resp = json.dumps({"error": str(e)})
+            resp = json.dumps(handle(raw))
             conn.sendall(resp.encode())
             conn.close()
         except Exception as e:

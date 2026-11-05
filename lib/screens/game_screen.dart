@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/game_client.dart';
+import 'map_screen.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -11,7 +12,6 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   final _client = GameClient();
   Map<String, dynamic>? _state;
-  String? _error;
   bool _loading = true;
 
   @override
@@ -21,139 +21,154 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Future<void> _bootstrap() async {
-    setState(() => _loading = true);
     try {
       final s = await _client.waitForServer();
       if (!mounted) return;
-      setState(() {
-        _state = s;
-        _error = null;
-        _loading = false;
-      });
+      setState(() { _state = s; _loading = false; });
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _send(String command) async {
     try {
       final s = await _client.send(command);
-      if (!mounted) return;
-      setState(() {
-        _state = s;
-        _error = null;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.toString());
-    }
+      if (mounted) setState(() => _state = s);
+    } catch (_) {}
+  }
+
+  // Helper to safely load images with a visual fallback
+  Widget _assetImage(String path, {BoxFit fit = BoxFit.cover, Widget? fallback}) {
+    return Image.asset(
+      'assets/$path.png',
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) {
+        return fallback ?? Container(color: Colors.grey.shade800);
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_state == null) return const Scaffold(body: Center(child: Text('Error connecting to game.')));
+
+    final s = _state!;
+    final sprites = (s['sprites'] as List).cast<Map<String, dynamic>>();
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFDF6EC),
-      appBar: AppBar(
-        title: const Text('SummerDay'),
-        backgroundColor: Colors.orange.shade700,
-        foregroundColor: Colors.white,
-        elevation: 2,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _buildError()
-              : _buildGame(_state!),
-    );
-  }
-
-  Widget _buildError() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: 12),
-            Text(_error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 16),
-            ElevatedButton(
-                onPressed: _bootstrap, child: const Text('Retry')),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGame(Map<String, dynamic> s) {
-    final characters = (s['characters_here'] as List).cast<Map<String, dynamic>>();
-    final actions = (s['actions'] as List).cast<String>();
-    final moves = (s['moves'] as List).cast<String>();
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
         children: [
-          _buildHud(s),
-          const SizedBox(height: 16),
-          _buildLocationCard(s),
-          const SizedBox(height: 16),
-          _buildMessage(s),
-          const SizedBox(height: 24),
-          if (characters.isNotEmpty) ...[
-            const Text('Characters',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...characters.map(_buildCharacterCard),
-            const SizedBox(height: 16),
-          ],
-          if (actions.isNotEmpty) ...[
-            const Text('Actions',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: actions
-                  .map((a) => ElevatedButton.icon(
-                        onPressed: () => _send('action:$a'),
-                        icon: Icon(_actionIcon(a)),
-                        label: Text(_cap(a)),
-                      ))
-                  .toList(),
+          // 1. BACKGROUND
+          Positioned.fill(
+            child: _assetImage(
+              'backgrounds/${s['background']}',
+              fallback: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue.shade200, Colors.blue.shade600],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+                child: Center(child: Text(s['location_name'], style: const TextStyle(fontSize: 40, color: Colors.white))),
+              ),
             ),
-            const SizedBox(height: 16),
-          ],
-          if (moves.isNotEmpty) ...[
-            const Text('Go to',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: moves
-                  .map((m) => OutlinedButton.icon(
-                        onPressed: () => _send('move:$m'),
-                        icon: const Icon(Icons.arrow_forward),
-                        label: Text(_cap(m)),
-                      ))
-                  .toList(),
+          ),
+
+          // 2. CHARACTER SPRITES
+          ...sprites.asMap().entries.map((entry) {
+            final i = entry.key;
+            final sprite = entry.value;
+            // Simple layout: spread characters evenly
+            final leftOffset = (MediaQuery.of(context).size.width / (sprites.length + 1)) * (i + 1) - 60;
+            return Positioned(
+              bottom: 160, // just above dialogue box
+              left: leftOffset,
+              child: GestureDetector(
+                onTap: () => _send('talk:${sprite['id']}'),
+                child: SizedBox(
+                  width: 120,
+                  height: 240,
+                  child: _assetImage(
+                    'characters/${sprite['sprite']}',
+                    fit: BoxFit.contain,
+                    fallback: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        CircleAvatar(radius: 40, backgroundColor: Colors.orange, child: Text(sprite['name'][0], style: const TextStyle(fontSize: 30, color: Colors.white))),
+                        const SizedBox(height: 4),
+                        Text(sprite['name'], style: const TextStyle(fontWeight: FontWeight.bold, backgroundColor: Colors.white70)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+
+          // 3. HUD (Top)
+          Positioned(
+            top: 40, left: 16, right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _hudChip(Icons.calendar_today, 'Day ${s['day']}'),
+                _hudChip(Icons.wb_sunny, s['time'].toString().toUpperCase()),
+                _hudChip(Icons.attach_money, '${s['money']}'),
+                _hudChip(Icons.bolt, '${s['energy']}'),
+              ],
             ),
-            const SizedBox(height: 24),
-          ],
-          Center(
-            child: TextButton.icon(
-              onPressed: () => _send('reset'),
-              icon: const Icon(Icons.restart_alt),
-              label: const Text('Reset Game'),
+          ),
+
+          // 4. MAP BUTTON (Top Right, below HUD)
+          Positioned(
+            top: 90, right: 16,
+            child: FloatingActionButton(
+              mini: true,
+              backgroundColor: Colors.white,
+              onPressed: () async {
+                final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => MapScreen(exits: (s['exits'] as List).cast<String>())));
+                if (result != null) _send('move:$result');
+              },
+              child: const Icon(Icons.map, color: Colors.orange),
+            ),
+          ),
+
+          // 5. DIALOGUE BOX & ACTIONS (Bottom)
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.85),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                border: Border(top: BorderSide(color: Colors.orange.shade400, width: 3)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    s['message'],
+                    style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.4),
+                  ),
+                  const SizedBox(height: 16),
+                  // Actions
+                  if ((s['actions'] as List).isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: (s['actions'] as List).map((a) {
+                        return ActionChip(
+                          backgroundColor: Colors.orange.shade800,
+                          label: Text(a.toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          onPressed: () => _send('action:$a'),
+                        );
+                      }).toList(),
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -161,114 +176,20 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildHud(Map<String, dynamic> s) {
+  Widget _hudChip(IconData icon, String text) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-            colors: [Colors.orange.shade400, Colors.orange.shade700]),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.orange.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4)),
-        ],
+        color: Colors.black54,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _hudItem(Icons.calendar_today, 'Day ${s['day']}'),
-          _hudItem(Icons.wb_sunny, _cap(s['time'] as String)),
-          _hudItem(Icons.attach_money, '${s['money']}'),
-          _hudItem(Icons.bolt, '${s['energy']}'),
+          Icon(icon, color: Colors.orange.shade300, size: 16),
+          const SizedBox(width: 4),
+          Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
     );
-  }
-
-  Widget _hudItem(IconData icon, String label) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.white, size: 20),
-        const SizedBox(height: 4),
-        Text(label,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
-      ],
-    );
-  }
-
-  Widget _buildLocationCard(Map<String, dynamic> s) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.06), blurRadius: 8)
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(s['location_name'] as String,
-              style: const TextStyle(
-                  fontSize: 24, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text(s['location_description'] as String,
-              style: TextStyle(color: Colors.grey.shade700)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessage(Map<String, dynamic> s) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Text(s['message'] as String,
-          style: const TextStyle(fontSize: 15, height: 1.5)),
-    );
-  }
-
-  Widget _buildCharacterCard(Map<String, dynamic> c) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Colors.orange,
-          child: Text(c['name'][0],
-              style: const TextStyle(color: Colors.white)),
-        ),
-        title: Text(c['name']),
-        subtitle: Text('Affection: ${c['affection']}'),
-        trailing: ElevatedButton(
-          onPressed: () => _send('talk:${c['id']}'),
-          child: const Text('Talk'),
-        ),
-      ),
-    );
-  }
-
-  String _cap(String s) =>
-      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
-
-  IconData _actionIcon(String a) {
-    switch (a) {
-      case 'study': return Icons.menu_book;
-      case 'work': return Icons.work;
-      case 'sleep': return Icons.bedtime;
-      case 'relax': return Icons.self_improvement;
-      case 'shop': return Icons.shopping_bag;
-      default: return Icons.star;
-    }
   }
 }
