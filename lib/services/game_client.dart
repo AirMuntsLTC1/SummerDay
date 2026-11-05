@@ -6,12 +6,23 @@ class GameClient {
   static const _port = 8000;
 
   Future<Map<String, dynamic>> send(String command) async {
-    final socket = await Socket.connect(_host, _port,
-        timeout: const Duration(seconds: 3));
+    final socket = await Socket.connect(
+      _host,
+      _port,
+      timeout: const Duration(seconds: 3),
+    );
     try {
-      socket.write(command);
+      // Send command bytes
+      socket.add(utf8.encode(command));
       await socket.flush();
-      final raw = await socket.transform(utf8.decoder).join();
+
+      // Read all response bytes until the server closes the socket
+      final bytes = <int>[];
+      await for (final chunk in socket) {
+        bytes.addAll(chunk);
+      }
+
+      final raw = utf8.decode(bytes);
       return jsonDecode(raw) as Map<String, dynamic>;
     } finally {
       socket.destroy();
