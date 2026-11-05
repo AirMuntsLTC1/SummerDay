@@ -25,6 +25,7 @@ class GameState:
         self.player_name = data.get("name", "Player")
         self.avatar = data.get("avatar", "default")
         preset = data.get("preset", "zero")
+        
         if preset == "zero":
             self.stats = {"INT": 1, "CHA": 1, "AGI": 1, "STR": 1}
             self.money = 0
@@ -34,26 +35,33 @@ class GameState:
         elif preset == "full":
             self.stats = {"INT": 10, "CHA": 10, "AGI": 10, "STR": 10}
             self.money = 500
+            
         self.phase = "intro"
+        # The Cinematic Story Queue
         self.dialogue_queue = [
-            f"Hello {self.player_name}...",
-            "You wake up in your childhood home.",
-            "Your mother left you this house before she passed.",
-            "It's been a year. The town hasn't changed much.",
-            "But you have. You're 18 now. It's time to make your mark.",
-            "You look around your room. The day is just beginning."
+            {"bg": "bus", "text": "It's been three years since I left this town..."},
+            {"bg": "bus", "text": "Now I'm back. 18 years old, with nothing but a suitcase and a vague memory of this place."},
+            {"bg": "house", "text": "My mother left me the old house. It's dusty, but it's mine now."},
+            {"bg": "bedroom", "text": "I walk inside and drop my bags. The room is exactly how I remember it."},
+            {"bg": "bedroom", "text": "Exhausted from the trip, I collapse onto the bed..."},
+            {"bg": "bedroom", "text": "Tomorrow is a new day. Time to see what this town has to offer."}
         ]
-        self.message = self.dialogue_queue.pop(0)
-        return self.to_dict()
+        return self.get_next_dialogue()
 
-    def next_dialogue(self):
+    def get_next_dialogue(self):
         if self.dialogue_queue:
-            self.message = self.dialogue_queue.pop(0)
-            if not self.dialogue_queue:
-                self.phase = "room"
+            current = self.dialogue_queue.pop(0)
+            self.message = current["text"]
+            return {
+                "phase": "intro",
+                "text": current["text"],
+                "bg": current["bg"],
+                "is_last": len(self.dialogue_queue) == 0
+            }
         else:
             self.phase = "room"
-        return self.to_dict()
+            self.message = "You wake up in your bedroom. The sun is shining."
+            return self.to_dict()
 
     def interact(self, target):
         if target == "bed":
@@ -77,7 +85,6 @@ class GameState:
         hotspots = []
         characters = []
         if self.phase == "room":
-            # Format: x%, y%, width%, height%
             hotspots = [
                 {"id": "door", "x": 0.8, "y": 0.4, "w": 0.15, "h": 0.4, "label": "Door"},
                 {"id": "bed", "x": 0.1, "y": 0.6, "w": 0.25, "h": 0.3, "label": "Bed"},
@@ -91,7 +98,6 @@ class GameState:
         return {
             "phase": self.phase,
             "player_name": self.player_name,
-            "avatar": self.avatar,
             "stats": self.stats,
             "day": self.day,
             "time": self.time,
@@ -117,7 +123,7 @@ def handle(raw):
     if act == "setup":
         return state.set_setup(req)
     elif act == "next_dialogue":
-        return state.next_dialogue()
+        return state.get_next_dialogue()
     elif act == "interact":
         return state.interact(req.get("target"))
     
